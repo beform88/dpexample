@@ -3,4 +3,10 @@
 /065_00.pdb
 /logs
 /results
+/autogluon
 /temp.ipynb
+**/__pycache__
+**/*.pyc
+**/*.pt
+**/*.pkl
+/Unimol_2_NMR_fix/example
