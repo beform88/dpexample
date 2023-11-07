@@ -1,4 +1,4 @@
-from dscribe.descriptors import ACSF, SOAP
+# from dscribe.descriptors import ACSF, SOAP
 from ..utils import xyz2mol
 
 class ACSF_Generator(object):
