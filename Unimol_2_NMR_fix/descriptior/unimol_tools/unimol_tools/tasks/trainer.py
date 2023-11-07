@@ -21,7 +21,7 @@ from ..utils import Metrics
 from ..utils import logger
 from .split import Splitter
 from tqdm import tqdm
-
+from ..utils import pad_1d_tokens, pad_2d, pad_coords
 import time
 import sys
 
@@ -35,6 +35,7 @@ class Trainer(object):
             self.metrics_str = params['metrics']
             self.metrics = Metrics(self.task, self.metrics_str)
         self._init_trainer(**params)
+
 
     def _init_trainer(self, **params):
         ### init common params ###
@@ -285,6 +286,15 @@ class Trainer(object):
                         repr_dict[key].extend([value.cpu().numpy()])
         repr_dict["cls_repr"] = np.concatenate(repr_dict["cls_repr"]).tolist()
         return repr_dict
+    
+    def inference_F(self, model, molecule, feature_name=None, return_repr=True):
+
+        model = model.to(self.device)
+        # model = model.train()
+        output = model(return_repr=return_repr, **molecule)
+        repr_dict = {"cls_repr": output['cls_repr'], "atomic_reprs": output['atomic_reprs']}
+        return repr_dict
+
 
     def set_seed(self, seed):
         """function used to set a random seed

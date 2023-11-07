@@ -113,8 +113,8 @@ class UniMolModel(BaseUnicoreModel):
             else:
                 logger.info("Loading pretrained weights from {}".format(path))
                 state_dict = torch.load(path, map_location=lambda storage, loc: storage)
-                # self.load_state_dict(state_dict['model'], strict=False)
-                self.load_state_dict(state_dict['model_state_dict'], strict=False)
+                self.load_state_dict(state_dict['model'], strict=False)
+                # self.load_state_dict(state_dict['model_state_dict'], strict=False)
 
     @classmethod
     def build_model(cls, args):

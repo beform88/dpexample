@@ -61,7 +61,7 @@ class DataHub(object):
         if 'atoms' in self.data and 'coordinates' in self.data:
             no_h_list = ConformerGen(**params).transform_raw(self.data['atoms'], self.data['coordinates'])
         else:
-            smiles_list = self.data["smiles"]                  
+            smiles_list = self.data["smiles"]
             no_h_list = ConformerGen(**params).transform(smiles_list)
 
         self.data['unimol_input'] = no_h_list

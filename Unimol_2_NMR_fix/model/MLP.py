@@ -22,7 +22,10 @@ class MLPModel(nn.Module):
         self.end = nn.Linear(self.hidden_size,self.output_dim)
 
     def batch_collate_fn(self, samples):
-        x = torch.stack([s[0] for s in samples]).float()
+        if isinstance(samples[0][0],dict):
+            x = [s[0] for s in samples]
+        else:
+            x = torch.stack([s[0] for s in samples]).float()
         label = torch.stack([s[1] for s in samples])
         return x, label
     

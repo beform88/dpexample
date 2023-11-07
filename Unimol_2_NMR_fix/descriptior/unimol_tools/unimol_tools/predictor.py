@@ -43,13 +43,42 @@ class UniMolRepr(object):
         datahub = DataHub(data = smiles_list, 
                          task = 'repr', 
                          is_train = False, 
-                         **self.params,
+                         **self.params
                         )
         
         dataset = MolDataset(datahub.data['unimol_input'])
         self.trainer = Trainer(task='repr')
         repr_output = self.trainer.inference(self.model, dataset=dataset)
         return repr_output
+
+class UniMolRepr_F(object):
+    def __init__(self, data_type='molecule', remove_hs=False, use_gpu=True, base_type = 'smiles', no_optimize = False):
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() and use_gpu else "cpu")
+        self.model = UniMolModel(output_dim=1, data_type=data_type, remove_hs=remove_hs).to(self.device)
+        self.model = self.model.train()
+        self.params = {'data_type':data_type, 'remove_hs': remove_hs, 'base_type': base_type, 'no_optimize': no_optimize}
+        self.trainer = Trainer(task='repr')
+
+    def get_repr(self,molecule):
+        
+        for k in molecule.keys():
+            molecule[k] = molecule[k].to(self.device)
+
+        output = self.model(return_repr=True, **molecule)
+
+        repr_dict = {"cls_repr": output['cls_repr'], "atomic_reprs": output['atomic_reprs']}
+        return repr_dict
+    
+    def get_reprs(self,molecules):
+        
+        for k in molecules.keys():
+            molecules[k] = molecules[k].to(self.device)
+
+        with torch.no_grad():
+            output = self.model(return_repr=True, **molecules)
+
+        repr_dict = {"cls_repr": output['cls_repr'], "atomic_reprs": output['atomic_reprs']}
+        return repr_dict
 
 scaler = {'CoRE_MAP': [1.318703908155812, 1.657051374039756,'log1p_standardization']}
 
@@ -72,7 +101,6 @@ class MOFPredictor(object):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() and use_gpu else "cpu")
         self.model = UniMolModel(output_dim=1, data_type='mof').to(self.device).half()
         self.model.eval()
-
 
     def single_predict(self, cif_path='1.cif', gas='CH4', pressure=10000, temperature=100):
         d = MOFReader().read_with_gas(cif_path=cif_path, gas=gas)

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from ..task import Trainer
 from ..data import DataHub
+from ..descriptior import Descriptor_Generator2Fintune
 from .MLP import MLPModel
 from .nmr_re import NMRREModel
 from torch.utils.data import Dataset, DataLoader
@@ -31,7 +32,8 @@ class NNModel(object):
 
         # dataset param
         self.data = datahub.data
-        self.train_size = kwargs.get('train_size',0.875)
+        self.desc_gen2fintune = datahub.desc_gen2fintune
+        self.train_size = datahub.clip_size
         self.random_state = kwargs.get('random_state',42)
 
         # init model
@@ -49,6 +51,7 @@ class NNModel(object):
         # init metrics
         self.cv = dict()
         self.metrics = self.trainer.metrics
+        self.device = self.trainer.device
 
     def _init_model(self, **kwargs):
         if self.model_name in NNMODEL_REGISTER:
@@ -64,20 +67,49 @@ class NNModel(object):
         loss_func = LOSS_RREGISTER[self.task_type]
         return loss_func
 
-    def run(self,):
+    def run(self,**kwargs):
         x = torch.tensor(np.asarray(self.data['features']))
         y = torch.tensor(np.float32(np.asarray(self.data['labels'])))
+        indices = np.arange(x.shape[0])
 
-        x_train,x_test,y_train,y_test = train_test_split(x,y,train_size=self.train_size,random_state=self.random_state)
+        indices_train_idx,indices_test_idx,y_train,y_test = train_test_split(indices,y,train_size=self.train_size,random_state=self.random_state)
+        x_train = [x[i] for i in indices_train_idx]
+        x_test = [x[i] for i in indices_test_idx]
 
-        train_dataset = TorchDataset(x_train,y_train)
-        valid_dataset = TorchDataset(x_test,y_test)
-        
-        try:
+        if self.desc_gen2fintune == None:
+            train_dataset = self.NNDataset(data = x_train, label = y_train)
+            valid_dataset = self.NNDataset(data = x_test, label = y_test)
+            self.finetune_models =None
             y_pred = self.trainer.fit_predict(train_dataset, valid_dataset, self.model, self.loss_func, self.dump_dir, self.target_scaler)
-        except:
-            print("NNModel {0} failed...".format(self.model_name))
-            return
+
+        else:
+            train_structure = {}
+            test_structure = {}
+            for k in self.data.keys():
+                if k in ['features','labels','target_scaler']:continue
+                train_structure[k] = [self.data[k][i] for i in indices_train_idx]
+                test_structure[k] = [self.data[k][i] for i in indices_test_idx]
+            
+            train_dataset = self.NNDataset(data = x_train, label = y_train, structure = train_structure, 
+                                        des_gen = self.desc_gen2fintune, device = self.device)
+            valid_dataset = self.NNDataset(data = x_test, label = y_test, structure = test_structure, 
+                                        des_gen = self.desc_gen2fintune, device = self.device)
+            # update model's input dim
+            input_updates_lens = train_dataset.input_dim_lens()
+            if input_updates_lens > self.input_dim:
+                self.input_dim = input_updates_lens
+                self.model = self._init_model(**kwargs)
+
+            # get models 
+            self.finetune_models = train_dataset.finetune_models()
+            y_pred = self.trainer.fit_predict_finetune(train_dataset, valid_dataset, self.model, self.finetune_models, self.loss_func, self.dump_dir, self.target_scaler)
+
+        # try:
+        #     y_pred = self.trainer.fit_predict(train_dataset, valid_dataset, self.model, self.loss_func, self.dump_dir, self.target_scaler)
+        # except:
+        #     print("NNModel {0} failed...".format(self.model_name))
+        #     return
+        # y_pred = self.trainer.fit_predict(train_dataset, valid_dataset, self.model, self.finetune_models, self.loss_func, self.dump_dir, self.target_scaler)
         
         print("result {0}".format(self.metrics.cal_metric(self.target_scaler.inverse_transform(y_test), self.target_scaler.inverse_transform(y_pred))))
 
@@ -97,7 +129,72 @@ class NNModel(object):
             os.makedirs(dir)
         joblib.dump(data, path)
     
+    def NNDataset(self, data, structure = None, atom = None, label = None, des_gen = None, device = None):
+        if structure != None:
+            # return FinetuneDataset(data = data, structure = structure, label = label, des_gen=  des_gen, device=device )
+            return FinetuneDataset_test(data = data, structure = structure, label = label, des_gen=  des_gen, device=device )
+        else:
+            return TorchDataset(data = data, label = label)
 
+class FinetuneDataset(Dataset):
+    def __init__(self, data, structure, label = None, des_gen = None, device = None):
+        self.structures = structure
+        self.desc_generator = des_gen
+        self.device = device
+        self.data = data
+        self.label = label if label is not None else np.zeros((len(data), 1))
+
+    def __getitem__(self, idx):
+        structure = {}
+        for k in self.structures.keys():
+            structure[k] = self.structures[k][idx]
+        structure_desc = self.desc_generator.generate(structure)
+        data = torch.cat([torch.tensor(self.data[idx]).to(self.device),structure_desc[0]],dim = 0)
+        return data, self.label[idx]
+
+    def __len__(self):
+        return len(self.data)
+    
+    def input_dim_lens(self):
+        structure = {}
+        for k in self.structures.keys():
+            structure[k] = self.structures[k][0]
+        structure_desc = self.desc_generator.generate(structure)
+        data = torch.cat([torch.tensor(self.data[0]).to(self.device),structure_desc[0]],dim = 0)
+        return data.shape[0]
+    
+    def finetune_models(self):
+        return self.desc_generator.finetune_models()
+
+class FinetuneDataset_test(Dataset):
+    def __init__(self, data, structure, label = None, des_gen = None, device = None):
+        self.structures = structure
+        self.desc_generator = des_gen
+        self.device = device
+        self.data = data
+        self.label = label if label is not None else np.zeros((len(data), 1))
+
+    def __getitem__(self, idx):
+        structure = {}
+        structure['base'] = torch.tensor(self.data[idx])
+        for k in self.structures.keys():
+            structure[k] = self.structures[k][idx]
+        return structure, self.label[idx]
+
+    def __len__(self):
+        return len(self.data)
+    
+    def input_dim_lens(self):
+        structure = {}
+        for k in self.structures.keys():
+            structure[k] = self.structures[k][0]
+        structure_desc = self.desc_generator.generate(structure)
+        data = torch.cat([torch.tensor(self.data[0]).to(self.device),structure_desc[0]],dim = 0)
+        return data.shape[0]
+    
+    def finetune_models(self):
+        return self.desc_generator.finetune_models()
+    
 class TorchDataset(Dataset):
     def __init__(self, data, label=None):
         self.data = data
@@ -105,6 +202,6 @@ class TorchDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx], self.label[idx]
-
+    
     def __len__(self):
         return len(self.data)
