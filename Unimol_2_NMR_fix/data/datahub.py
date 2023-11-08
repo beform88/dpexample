@@ -20,7 +20,7 @@ class DataHub(object):
         
         self.if_process = self.if_processed()
         self.if_process = kwargs.get('if_process',self.if_process)
-        kwargs['if_process'] = self.if_process
+        # kwargs['if_process'] = self.if_process
 
         self.structure_level = kwargs.get('structure_level','atom')
         self.structure_source = kwargs.get('structure_source','files')
