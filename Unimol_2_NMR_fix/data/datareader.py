@@ -13,10 +13,10 @@ from rdkit.Chem import AllChem
 
 class DataReader(object):
     def __init__(self,**kwargs):
-        self.data_path = kwargs('data_path','data.csv')
+        self.data_path = kwargs.get('data_path','data.csv')
         self.file_name = os.path.splitext(os.path.basename(self.data_path))[0]
         self.task = kwargs.get('task','all')
-        self.if_process = kwargs('if_process',True)
+        self.if_process = kwargs.get('if_process',True)
         self.if_train = kwargs.get('train',True)
         
         # desc
