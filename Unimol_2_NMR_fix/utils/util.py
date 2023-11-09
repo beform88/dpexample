@@ -1,6 +1,6 @@
 from hashlib import md5
 import numpy as np
-from openbabel import openbabel
+# from openbabel import openbabel
 from rdkit import Chem
 from ase.io import read, write
 import os
