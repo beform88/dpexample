@@ -80,7 +80,7 @@ class UniRepr_Generator(object):
     def mols2src(self):
         pass
 
-from openbabel import openbabel
+# from openbabel import openbabel
 from rdkit import Chem
 from ase.io import read, write
 import os
